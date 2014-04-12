@@ -1,0 +1,6 @@
+Stuff to add:
+Example handling of files
+How to shuffle
+Background music
+Add what a pyc file is to chapter 2
+Show how to convert a plain set of drawing commands to a function with the offset issue.
