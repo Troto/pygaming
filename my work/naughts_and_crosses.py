@@ -61,29 +61,49 @@ minimum_vertical_margin = 10
 
 win_limit = 3
 
-NW = 0
-NE = 1
-SE = 2
-SW = 3
+UP = 0
+RIGHT = 1
+DOWN = 2
+LEFT = 3
+NW = 4
+NE = 5
+SE = 6
+SW = 7
 
-DIRECTIONS = [NW,NE,SE,SW]
+DIRECTIONS = [UP,RIGHT,DOWN,LEFT,NW,NE,SE,SW]
+OPPOSITES = [[UP,DOWN],[RIGHT,LEFT],[NW,SE],[NE,SW]]
 
-class Program():
+class Event_manageable():
+    def __init__(self,event_manager):
+        self.event_manager = event_manager
+        self.event_manager.add_listener(self)
+
+    def notify(self,event):
+        pass
+
+class Program(Event_manageable):
     '''
     This is used as the overarching run class.
     '''
-    def __init__(self):
+    def __init__(self,event_manager):
+        Event_manageable.__init__(self,event_manager)
         pygame.init()
-        self.event_manager = Event_manager()
+        self.event_manager = event_manager
         self.pacer = Pacer(self.event_manager)
         self.controller = Controller(self.event_manager)
         self.view = View(self.event_manager)
+        self.game = Game(self.view,self.event_manager)
 
     def run(self):
-        self.game = Game(self.view,self.event_manager)
+        self.view.setup()
+        self.game.setup()
         self.game.run()
         self.pacer.run()
         pygame.quit()
+
+    def notify(self,event):
+        if isinstance(event,Restart_game_event):
+            self.run()
 
 class Event_manager():
     '''
@@ -106,14 +126,6 @@ class Event_manager():
         for listener in self.listeners:
             listener.notify(event)
 
-class Event_manageable():
-    def __init__(self,event_manager):
-        self.event_manager = event_manager
-        self.event_manager.add_listener(self)
-
-    def notify(self,event):
-        pass
-
 class Pacer(Event_manageable):
     '''
     This class is where you will implement a timer to for limiting your tick
@@ -123,12 +135,9 @@ class Pacer(Event_manageable):
     def __init__(self,event_manager):
         Event_manageable.__init__(self,event_manager)
         self.clock = pygame.time.Clock()
-
-        #initialize a timer here
         self.keep_going = True
 
     def run(self):
-        #this is the while loop to limit
         while self.keep_going:
             self.clock.tick(60)
             event = Tick_event()
@@ -159,10 +168,11 @@ class Controller(Event_manageable):
 class View(Event_manageable):
     def __init__(self,event_manager):
         Event_manageable.__init__(self,event_manager)
+        self.setup()
+
+    def setup(self):
         #initialize display here
         self.font = pygame.font.Font(None,80)
-        self.is_message = False
-        self.message = None
         self.screen = pygame.display.set_mode(RESOLUTION)
         self.background = pygame.Surface(self.screen.get_size())
         self.background.fill(BLACK)
@@ -207,9 +217,13 @@ class View(Event_manageable):
             piece_sprite.rect.center = event.square.rect.center
 
         elif isinstance(event,Game_won_event):
-            message = "Player " + str(event.winner) + " has won!"
-            self.message = Message_sprite(self.font,message,self.message_sprites)
-            self.message.rect.center = [RESOLUTION[0]/2,RESOLUTION[1]/2]
+            message1 = "Player " + str(event.winner) + " has won!"
+            message1 = Message_sprite(self.font,message1,self.message_sprites)
+            message1.rect.center = [RESOLUTION[0]/2,RESOLUTION[1]/2]
+            message2 = "Click to play again"
+            message2 = Message_sprite(self.font,message2,self.message_sprites)
+            message2.rect.center = [RESOLUTION[0]/2,RESOLUTION[1]/2+70]
+
 
 class Map():
     def build(self):
@@ -252,6 +266,24 @@ class Map():
             posy += (sector_size[1] + vertical_margin)
 
         #configure neighbour sectors
+        #find up neighbours
+        for i in range(num_across,total_sectors):
+            self.components[i].neighbours[UP] = self.components[i-num_across]
+
+        #find right neighbours
+        for i in range(total_sectors):
+            if i%num_across != num_across-1:
+                self.components[i].neighbours[RIGHT] = self.components[i+1]
+
+        #find down neighbours
+        for i in range(total_sectors-num_across):
+            self.components[i].neighbours[DOWN] = self.components[i+num_across]
+
+        #find left neighbours
+        for i in range(total_sectors):
+            if i%num_across != 0:
+                self.components[i].neighbours[LEFT] = self.components[i-1]
+
         #find NW neighbours
         for i in range(num_across,total_sectors):
             if i%num_across != 0:
@@ -288,7 +320,7 @@ class Sector(Static_map_component):
         self.colour = colour
         self.piece = None
 
-        self.neighbours = [None for x in range(4)]
+        self.neighbours = [None for x in range(len(DIRECTIONS))]
 
     def count_adjacent_pieces(self,direction,piece):
         if type(self.piece) is type(piece):
@@ -355,7 +387,7 @@ class Message_sprite(pygame.sprite.Sprite):
         self.image = self.image.convert_alpha()
         self.image.fill((0,0,0,0))
         self.text = font.render(message,True,WHITE)
-        self.image.blit(self.text,(60,60))
+        self.image.blit(self.text,(60,40))
         self.rect = self.image.get_rect()
 
 
@@ -365,11 +397,15 @@ class Dynamic_map_component(Map_component,Event_manageable):
 class Game(Event_manageable):
     def __init__(self,view,event_manager):
         Event_manageable.__init__(self,event_manager)
+        self.event_manager = event_manager
         self.view = view
+        self.setup()
+
+    def setup(self):
         self.game_map = Map()
         self.active_player = 1
-        self.event_manager
         self.playable_squares = []
+        self.won = False
 
     def run(self):
         self.game_map.build()
@@ -377,40 +413,47 @@ class Game(Event_manageable):
 
     def notify(self,event):
         if isinstance(event,Click_event):
-            clicked_square = None
-            for square in self.playable_squares:
-                if square.rect.collidepoint(event.pos):
-                    clicked_square = square
-                    self.playable_squares.remove(clicked_square)
-                    break
-            if clicked_square:
-                if self.active_player == 1:
-                    piece = Naught(sector_size[0],RED)
-                    self.active_player = 2
-                else:
-                    piece = Cross(sector_size[0],BLUE)
-                    self.active_player = 1
-                clicked_square.sector.piece = piece
-                self.event_manager.broadcast(Place_event(piece,clicked_square))
-                self.check_for_winner(clicked_square,piece)
+            if self.won == True:
+                self.event_manager.broadcast(Restart_game_event())
+            else:
+                clicked_square = None
+                for square in self.playable_squares:
+                    if square.rect.collidepoint(event.pos):
+                        clicked_square = square
+                        self.playable_squares.remove(clicked_square)
+                        break
+                if clicked_square:
+                    if self.active_player == 1:
+                        piece = Naught(sector_size[0],RED)
+                        self.active_player = 2
+                    else:
+                        piece = Cross(sector_size[0],BLUE)
+                        self.active_player = 1
+                    clicked_square.sector.piece = piece
+                    self.event_manager.broadcast(Place_event(piece,clicked_square))
+                    self.check_for_winner(clicked_square,piece)
 
     def check_for_winner(self,clicked_square,piece):
-        results = [0 for x in range(6)]
+        results = [0 for x in range(8)]
         for direction in DIRECTIONS:
             if clicked_square.sector.neighbours[direction]:
                 results[direction] = clicked_square.sector.neighbours[direction].count_adjacent_pieces(direction,piece)
             else:
                 results[direction] = 0
 
-        results[4] = results[NW] + results[SE]
-        results[5] = results[NE] + results[SW]
+        for i in range(len(OPPOSITES)):
+            result = results[OPPOSITES[i][0]]+results[OPPOSITES[i][1]]
+            results.append(result)
+
         for i in results:
             if i == win_limit-1:
                 if self.active_player == 1:
                     winner = 2
                 else:
                     winner = 1
+                self.won = True
                 self.event_manager.broadcast(Game_won_event(winner))
+                break
 
 
 class Player(Event_manageable):
@@ -440,8 +483,12 @@ class Game_won_event(Event):
     def __init__(self,winner):
         self.winner = winner
 
+class Restart_game_event(Event):
+    pass
+
 def main():
-    program = Program()
+    em = Event_manager()
+    program = Program(em)
     program.run()
 
 if __name__ == "__main__":
