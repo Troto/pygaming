@@ -43,7 +43,7 @@ Author: Toby Sutherland
 """
 import pygame
 
-RESOLUTION = (700,700)
+RESOLUTION = (600,600)
 
 RED = (255,0,0)
 GREEN = (0,255,0)
@@ -51,7 +51,10 @@ BLUE = (0,0,255)
 BLACK = (0,0,0)
 WHITE = (255,255,255)
 
-sector_size = (200,200)
+sector_size = (180,180)
+
+minimum_horizontal_margin = 10
+minimum_vertical_margin = 10
 avatar_radius = 50
 
 UP = 0
@@ -65,13 +68,13 @@ class Program():
     '''
     def __init__(self):
         pygame.init()
-        self.em = Event_manager()
-        self.pacer = Pacer(self.em)
-        self.controller = Controller(self.em)
-        self.view = View(self.em)
+        self.event_manager = Event_manager()
+        self.pacer = Pacer(self.event_manager)
+        self.controller = Controller(self.event_manager)
+        self.view = View(self.event_manager)
 
     def run(self):
-        self.game = Game(self.view,self.em)
+        self.game = Game(self.view,self.event_manager)
         self.game.run()
         self.pacer.run()
 
@@ -98,8 +101,8 @@ class Event_manager():
 
 class Event_manageable():
     def __init__(self,event_manager):
-        self.em = event_manager
-        self.em.add_listener(self)
+        self.event_manager = event_manager
+        self.event_manager.add_listener(self)
 
     def notify(self,event):
         pass
@@ -122,7 +125,7 @@ class Pacer(Event_manageable):
         while self.keep_going:
             self.clock.tick(60)
             event = Tick_event()
-            self.em.broadcast(event)
+            self.event_manager.broadcast(event)
 
     def notify(self,event):
         #checks if received event is a quit event, if so halts main loop.
@@ -130,9 +133,9 @@ class Pacer(Event_manageable):
             self.keep_going = False
 
 class Controller(Event_manageable):
-    def __init__(self,em):
-        Event_manageable.__init__(self,em)
-        self.em = em
+    def __init__(self,event_manager):
+        Event_manageable.__init__(self,event_manager)
+        self.event_manager = event_manager
 
     def notify(self,event):
         if isinstance(event,Tick_event):
@@ -151,7 +154,7 @@ class Controller(Event_manageable):
                     if event.key == pygame.K_RIGHT:
                         ev = Move_avatar_event(RIGHT)
             if ev:
-                self.em.broadcast(ev)
+                self.event_manager.broadcast(ev)
 
 class View(Event_manageable):
     def __init__(self,event_manager):
@@ -162,6 +165,7 @@ class View(Event_manageable):
         self.background.fill(BLACK)
         self.screen.blit(self.background, (0,0))
         pygame.display.flip()
+        pygame.mouse.set_visible(0)
 
         self.back_sprites = pygame.sprite.RenderUpdates()
         self.front_sprites = pygame.sprite.RenderUpdates()
@@ -212,21 +216,38 @@ class Map():
         self.components = []
 
         num_across = RESOLUTION[0]//sector_size[0]
+        horizontal_margin = (RESOLUTION[0]-sector_size[0]*num_across)//(num_across+1)
+        while horizontal_margin < minimum_horizontal_margin:
+            num_across-=1
+            horizontal_margin = (RESOLUTION[0]-sector_size[0]*num_across)//(num_across+1)
+
+        if (RESOLUTION[0]-sector_size[0]*num_across - (num_across+1) * horizontal_margin) != 0:
+            ew_edge_margin = (RESOLUTION[0]-sector_size[0]*num_across - (num_across-1) * horizontal_margin)/2
+        else:
+            ew_edge_margin = horizontal_margin
+
         num_down = RESOLUTION[1]//sector_size[1]
+        vertical_margin = (RESOLUTION[1]-sector_size[1]*num_down)//(num_down+1)
+        while vertical_margin < minimum_vertical_margin:
+            num_down -=1
+            vertical_margin = (RESOLUTION[1]-sector_size[1]*num_down)//(num_down+1)
+
+        if (RESOLUTION[1]-sector_size[1]*num_down - (num_down+1) * vertical_margin) != 0:
+            ns_edge_margin = (RESOLUTION[1]-sector_size[1]*num_down - (num_down-1) * vertical_margin)/2
+        else:
+            ns_edge_margin = vertical_margin
+
         total_sectors = num_across*num_down
 
-        horizontal_margin = (RESOLUTION[0]-sector_size[0]*num_across)//(num_across+1)
-        vertical_margin = (RESOLUTION[1]-sector_size[1]*num_down)//(num_down+1)
+        posx = ew_edge_margin
+        posy = ns_edge_margin
 
-        posx = horizontal_margin
-        posy = vertical_margin
-
-        while posy < RESOLUTION[1]:
-            while posx < RESOLUTION[0]:
+        while posy < RESOLUTION[1]-ns_edge_margin:
+            while posx < RESOLUTION[0]-ew_edge_margin:
                 sector = Sector((posx,posy),sector_size,GREEN)
                 self.components.append(sector)
                 posx += (sector_size[0] + horizontal_margin)
-            posx = horizontal_margin
+            posx = ew_edge_margin
             posy += (sector_size[1] + vertical_margin)
 
         #configure neighbour sectors
@@ -276,8 +297,8 @@ class Sector_sprite(pygame.sprite.Sprite):
         self.sector = sector
 
 class Dynamic_map_component(Map_component,Event_manageable):
-    def __init__(self):
-        Event_manageable.__init__(self)
+    def __init__(self,event_manager):
+        Event_manageable.__init__(self,event_manager)
 
 class Game(Event_manageable):
     def __init__(self,view,event_manager):
@@ -293,26 +314,26 @@ class Game(Event_manageable):
             avatar.place(self.game_map.components[0])
 
 class Player(Event_manageable):
-    def __init__(self,em):
-        Event_manageable.__init__(self,em)
+    def __init__(self,event_manager):
+        Event_manageable.__init__(self,event_manager)
         #define player attributes such as score etc here
-        self.avatars = [Avatar(em)]
+        self.avatars = [Avatar(event_manager)]
 
 class Avatar(Event_manageable):
-    def __init__(self,em):
-        Event_manageable.__init__(self,em)
+    def __init__(self,event_manager):
+        Event_manageable.__init__(self,event_manager)
         #define avatar atrributes such as speed and position here
         self.sector = None
-        self.em = em
+        self.event_manager = event_manager
 
     def place(self,sector):
         self.sector = sector
-        self.em.broadcast(Move_avatar_sprite_event(self))
+        self.event_manager.broadcast(Move_avatar_sprite_event(self))
 
     def move(self,direction):
         if self.sector.neighbours[direction]:
             self.sector = self.sector.neighbours[direction]
-            self.em.broadcast(Move_avatar_sprite_event(self))
+            self.event_manager.broadcast(Move_avatar_sprite_event(self))
 
     def notify(self,event):
         if isinstance(event,Move_avatar_event):
@@ -330,27 +351,24 @@ class Avatar_sprite(pygame.sprite.Sprite):
 
 class Event():
     def __init__(self):
-        self.name = "Generic Event"
+        pass
 
 class Tick_event(Event):
     def __init__(self):
-        self.name = "Tick Event"
+        pass
 
 class Quit_event(Event):
     def __init__(self):
-        self.name = "Quit Event"
+        pass
 
 class Move_avatar_event(Event):
     def __init__(self,direction):
-        self.name = "Move Avatar Event"
         self.direction = direction
 
 class Move_avatar_sprite_event(Event):
     def __init__(self,avatar):
-        self.name = "Move Avatar Sprite Event"
         self.avatar = avatar
 
-# Here define any other events that you will use
 def main():
     program = Program()
     program.run()

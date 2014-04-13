@@ -49,15 +49,15 @@ class Program():
     implementation and requires specific additions such as menus.
     '''
     def __init__(self):
-        em = Event_manager()
-        pacer = Pacer(em)
-        controller = Controller(em)
-        view = View(em)
+        self.em = Event_manager()
+        self.pacer = Pacer(self.em)
+        self.controller = Controller(self.em)
+        self.view = View(self.em)
 
     def run(self):
-        game = Game(em)
-        game.run()
-        pacer.run()
+        self.game = Game(self.em)
+        self.game.run()
+        self.pacer.run()
 
 class Event_manager():
     '''
@@ -94,12 +94,11 @@ class Pacer(Event_manageable):
     rate. Left as is, it will run as fast as it can. You should implement a pacer
     so your game doesn't become a CPU guzzling abomination.
     '''
-    def __init__(self,event_manager):
-        Event_manageable.__init__(self)
+    def __init__(self,em):
+        Event_manageable.__init__(self,em)
 
         #initialize a timer here
         self.keep_going = True
-        self.run()
 
     def run(self):
         #this is the while loop to limit
@@ -110,11 +109,20 @@ class Pacer(Event_manageable):
     def notify(self,event):
         #checks if received event is a quit event, if so halts main loop.
         if isinstance(event,Quit_event):
-            keep_going = False
+            self.keep_going = False
+
+class Controller(Event_manageable):
+    def __init__(self,em):
+        Event_manageable.__init__(self,em)
+
+    def notify(self,event):
+        if isinstance(event,Tick_event):
+            #put input conditions such as keyboard event logic here
+            pass
 
 class View(Event_manageable):
-    def __init__(self):
-        Event_manageable.__init__(self)
+    def __init__(self,em):
+        Event_manageable.__init__(self,em)
         #initialize display here
 
     def show_map(self,game_map):
@@ -136,15 +144,6 @@ class View(Event_manageable):
             avatar = event.avatar
             self.move_avatar(avatar)
 
-class Controller(Event_manageable):
-    def __init__(self):
-        Event_manageable.__init__(self)
-
-    def notify(self,event):
-        if isinstance(event,Tick_event):
-            #put input conditions such as keyboard event logic here
-            pass
-
 class Map():
     def build(self):
         #build map here
@@ -159,32 +158,38 @@ class Static_map_component(Map_component):
     pass
 
 class Dynamic_map_component(Map_component,Event_manageable):
-    def __init__(self):
-        Event_manageable.__init__(self)
+    def __init__(self,em):
+        Event_manageable.__init__(self,em)
+
+# here you can create the map components such as sectors or platforms or enemies
+# also their corresponding sprite class
 
 class Game(Event_manageable):
-    def __init__(self,view):
-        Event_manageable.__init__(self)
+    def __init__(self,view,em):
+        Event_manageable.__init__(self,em)
         self.view = view
-        game_map = Map()
-        player = Player(em)
+        self.game_map = Map()
+        selfplayer = Player(em)
 
     def run(self):
-        game_map.build()
-        self.view.show_map(game_map)
-        for avatar in player.avatars:
+        self.game_map.build()
+        self.view.show_map(self.game_map)
+        for avatar in self.player.avatars:
             self.view.show_avatar(avatar)
 
 class Player(Event_manageable):
-    def __init__(self):
-        Event_manageable.__init__(self)
+    def __init__(self,em):
+        Event_manageable.__init__(self,em)
         #define player attributes such as score etc here
-        avatars = [Avatar(em)]
+        self.avatars = [Avatar(em)]
 
 class Avatar(Event_manageable):
-    def __init__(self):
-        Event_manageable.__init__(self)
+    def __init__(self,em):
+        Event_manageable.__init__(self,em)
         #define avatar atrributes such as speed and position here
+
+    def place(self, position):
+        pass
 
     def move(self,direction):
         #does not have to be direction, it can be whatever movement system you
@@ -197,21 +202,20 @@ class Avatar(Event_manageable):
         if isinstance(event,Move_avatar_event):
             self.move(event.direction)
 
+class Avatar_sprite():
+    pass
+
 class Event():
-    def __init__(self):
-        self.name == "Generic Event"
+    pass
 
 class Tick_event(Event):
-    def __init__(self):
-        self.name == "Tick Event"
+    pass
 
 class Quit_event(Event):
-    def __init__(self):
-        self.name == "Quit Event"
+    pass
 
 class Move_avatar_event(Event):
     def __init__(self,direction):
-        self.name == "Move Avatar Event"
         self.direction = direction
 
 # Here define any other events that you will use
