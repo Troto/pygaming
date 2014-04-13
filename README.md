@@ -9,5 +9,3 @@ There are a few for which I can't remember where I found them, sorry.
 Below are useful links I have come across.
 
 Useful links:
-
-
